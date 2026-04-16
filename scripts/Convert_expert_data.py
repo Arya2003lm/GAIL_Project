@@ -282,6 +282,69 @@ def clip_trajectories_actions_by_quantile(
 # 5. 批量加载
 # =============================================================
 
+def load_all_with_dataframes(
+    data_dir: str, goal: np.ndarray | None = None
+) -> tuple[list[Trajectory], list[tuple[pd.DataFrame, np.ndarray]]]:
+    """
+    单次遍历所有 .asc 文件，同时返回 (trajs, dfs)。
+    保证 trajs[i] 和 dfs[i] 来自完全相同的文件和 DataFrame，
+    消除两次独立加载时可能出现的索引错位问题。
+    """
+    files = sorted(Path(data_dir).glob("*.asc"))
+    trajs: list[Trajectory] = []
+    dfs: list[tuple[pd.DataFrame, np.ndarray]] = []
+
+    for f in files:
+        df = pd.read_csv(str(f))
+        df = truncate(df)
+        if len(df) < 5:
+            continue
+        ep_goal = (
+            goal
+            if goal is not None
+            else np.array([df["HV_X"].iloc[-1], df["HV_Y"].iloc[-1]], dtype=np.float32)
+        )
+        df = compute_derived(df, ep_goal)
+        df = df.reset_index(drop=True)
+
+        # 构建 Trajectory（与 load_trajectory 完全相同的逻辑）
+        obs_list = [
+            build_obs(df.iloc[t], df.iloc[t - 1] if t > 0 else df.iloc[0])
+            for t in range(len(df))
+        ]
+        obs_arr = np.array(obs_list, dtype=np.float32)
+        act_arr = df[ACT_COLS].to_numpy(dtype=np.float32)
+        obs_with_next = np.vstack([obs_arr, obs_arr[[-1]]])
+        traj = Trajectory(
+            obs=obs_with_next,
+            acts=act_arr,
+            infos=np.array([{}] * len(act_arr)),
+            terminal=True,
+        )
+        trajs.append(traj)
+        dfs.append((df, ep_goal))
+
+    # 分位数裁剪（与 load_all_trajectories 相同）
+    trajs, clip_low, clip_high = clip_trajectories_actions_by_quantile(trajs)
+    print(
+        "动作分位数裁剪: "
+        f"HV_ax[{clip_low[0]:.3f}, {clip_high[0]:.3f}], "
+        f"HV_ay[{clip_low[1]:.3f}, {clip_high[1]:.3f}]"
+    )
+    lengths = [len(t.acts) for t in trajs]
+    print(f"成功加载：{len(trajs)} 条轨迹（trajs 与 dfs 一一对应）")
+    print(f"轨迹长度：min={min(lengths)}, max={max(lengths)}, mean={np.mean(lengths):.1f}")
+    return trajs, dfs
+
+
+def load_all_dataframes(
+    data_dir: str, goal: np.ndarray | None = None
+) -> list[tuple[pd.DataFrame, np.ndarray]]:
+    """保留向后兼容，内部调用 load_all_with_dataframes 取 dfs 部分。"""
+    _, dfs = load_all_with_dataframes(data_dir, goal)
+    return dfs
+
+
 def load_all_trajectories(data_dir: str, goal: np.ndarray | None = None) -> list[Trajectory]:
     files = sorted(Path(data_dir).glob("*.asc"))
     print(f"找到 {len(files)} 个 .asc 文件")
