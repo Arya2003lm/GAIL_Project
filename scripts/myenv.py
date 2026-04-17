@@ -23,6 +23,7 @@ try:
         action_space as ced_action_space,
         observation_space as ced_observation_space,
     )
+    from relevant_traj import make_reference_traj
 except ModuleNotFoundError:
     from scripts.Convert_expert_data import (
         obs_low,
@@ -30,6 +31,7 @@ except ModuleNotFoundError:
         action_space as ced_action_space,
         observation_space as ced_observation_space,
     )
+    from scripts.relevant_traj import make_reference_traj
 
 
 class LeftTurnEnv(gym.Env):
@@ -57,6 +59,10 @@ class LeftTurnEnv(gym.Env):
         max_dev: float = 10.0,
         goal_radius: float = 2.0,
         playback: bool = False,
+        progress_reward_scale: float = 1.0,
+        goal_reached_bonus: float = 5.0,
+        ref_path_penalty_threshold: float = 5.0,
+        ref_path_penalty_scale: float = 1.0,
     ):
         super().__init__()
 
@@ -66,9 +72,19 @@ class LeftTurnEnv(gym.Env):
         self.dataframes = dataframes
         self.max_dev = max_dev
         self.goal_radius = goal_radius
+        self.progress_reward_scale = float(progress_reward_scale)
+        self.goal_reached_bonus = float(goal_reached_bonus)
+        self.ref_path_penalty_threshold = float(ref_path_penalty_threshold)
+        self.ref_path_penalty_scale = float(ref_path_penalty_scale)
         # playback=True: step() 直接从 DataFrame 读取 HV 状态，不进行 Euler 积分
         # 用于对齐检查，验证 _build_obs 的构造逻辑是否正确
         self.playback = playback
+
+        self.reference_trajs: list[np.ndarray] = []
+        for df, goal in dataframes:
+            start = np.array([df["HV_X"].iloc[0], df["HV_Y"].iloc[0]], dtype=np.float64)
+            ref_x, ref_y = make_reference_traj(start, np.asarray(goal, dtype=np.float64))
+            self.reference_trajs.append(np.column_stack([ref_x, ref_y]).astype(np.float32))
 
         # 观测/动作空间与专家数据完全一致
         self.observation_space = ced_observation_space
@@ -77,6 +93,7 @@ class LeftTurnEnv(gym.Env):
         # 运行时状态（reset 时初始化）
         self.current_df: pd.DataFrame = dataframes[0][0]
         self.current_goal: np.ndarray = dataframes[0][1]
+        self.current_ref_traj: np.ndarray = self.reference_trajs[0]
         self.t: int = 0
         self.max_t: int = 0
 
@@ -91,6 +108,7 @@ class LeftTurnEnv(gym.Env):
         self._prev_hv_vx: float = 0.0
         self._prev_hv_vy: float = 0.0
         self._prev_hv_yaw: float = 0.0
+        self._prev_d_des: float = 0.0
 
     # ------------------------------------------------------------------
     def reset(self, seed=None, options=None):
@@ -102,6 +120,7 @@ class LeftTurnEnv(gym.Env):
         else:
             idx = int(self.np_random.integers(len(self.dataframes)))
         self.current_df, self.current_goal = self.dataframes[idx]
+        self.current_ref_traj = self.reference_trajs[idx]
         self.max_t = len(self.current_df) - 1
         self.t = 0
 
@@ -117,6 +136,7 @@ class LeftTurnEnv(gym.Env):
         self._prev_hv_vx  = self._hv_vx
         self._prev_hv_vy  = self._hv_vy
         self._prev_hv_yaw = self._hv_yaw
+        self._prev_d_des = self._distance_to_goal()
 
         return self._build_obs(), {}
 
@@ -126,6 +146,7 @@ class LeftTurnEnv(gym.Env):
         self._prev_hv_vx  = self._hv_vx
         self._prev_hv_vy  = self._hv_vy
         self._prev_hv_yaw = self._hv_yaw
+        prev_d_des = self._distance_to_goal()
 
         # 推进数据回放指针（AV / eHMI 随时间步更新）
         self.t = min(self.t + 1, self.max_t)
@@ -150,11 +171,30 @@ class LeftTurnEnv(gym.Env):
             self._hv_yaw = float(np.arctan2(self._hv_vy, self._hv_vx + 1e-6))
 
         obs        = self._build_obs()
-        reward     = 0.0          # GAIL 会用判别器奖励覆盖此值
+        curr_d_des = self._distance_to_goal()
+        ref_min_dist = self._distance_to_reference_traj()
+        progress = prev_d_des - curr_d_des
+        progress_reward = self.progress_reward_scale * progress
+        ref_path_penalty = 0.0
+        if ref_min_dist > self.ref_path_penalty_threshold:
+            ref_path_penalty = -self.ref_path_penalty_scale * (ref_min_dist - self.ref_path_penalty_threshold)
+
+        goal_bonus = self.goal_reached_bonus if curr_d_des < self.goal_radius else 0.0
+        reward = float(progress_reward + goal_bonus + ref_path_penalty)
+
         terminated = self._is_done()
         truncated  = self.t >= self.max_t
+        self._prev_d_des = curr_d_des
 
-        return obs, reward, terminated, truncated, {}
+        info = {
+            "d_des": curr_d_des,
+            "ref_min_dist": float(ref_min_dist),
+            "progress_reward": float(progress_reward),
+            "ref_path_penalty": float(ref_path_penalty),
+            "goal_bonus": float(goal_bonus),
+            "env_reward": reward,
+        }
+        return obs, reward, terminated, truncated, info
 
     # ------------------------------------------------------------------
     def _build_obs(self) -> np.ndarray:
@@ -215,3 +255,15 @@ class LeftTurnEnv(gym.Env):
             return True
 
         return False
+
+    def _distance_to_goal(self) -> float:
+        dx = float(self.current_goal[0]) - self._hv_x
+        dy = float(self.current_goal[1]) - self._hv_y
+        return float(np.sqrt(dx ** 2 + dy ** 2))
+
+    def _distance_to_reference_traj(self) -> float:
+        if self.current_ref_traj.size == 0:
+            return 0.0
+        hv_xy = np.array([self._hv_x, self._hv_y], dtype=np.float32)
+        dists = np.linalg.norm(self.current_ref_traj - hv_xy[None, :], axis=1)
+        return float(np.min(dists))

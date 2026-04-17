@@ -21,7 +21,7 @@ from imitation.util.networks import RunningNorm
 from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecEnvWrapper
 try:
     from Convert_expert_data import (
         load_all_trajectories as ced_load_all_trajectories,
@@ -53,15 +53,23 @@ OBS_DIM     = ced_observation_space.shape[0]
 ACT_DIM     = ced_action_space.shape[0]
 DATA_DIR    = "./data/left_turn/"      # .asc 数据目录
 SAVE_DIR    = "./checkpoints/"
-BC_POLICY_NAME = "bc_policy_hv_ax_ay_split80"
+BC_POLICY_NAME = "bc_policy_hv_ax_ay"
 TRAIN_RATIO = 0.8
-SPLIT_SEED = 42
-GAIL_SMOKE_TIMESTEPS = 10_000
-GAIL_FULL_TIMESTEPS = 300_000
+SPLIT_SEED = 28
+GAIL_SMOKE_TIMESTEPS = 80_000
+GAIL_FULL_TIMESTEPS = 500_000
 RUN_ALIGNMENT_CHECK = False
 RUN_SINGLE_TRAJ_DEBUG = False
-RUN_GAIL_SMOKE_TEST = True
-RUN_GAIL_FULL_TRAIN = False
+RUN_BC_RETRAIN = False       # True: 重新训练 BC；False: 读取已有 BC_POLICY_NAME
+BC_TRAIN_ON_ALL_DATA = True  # 按 train_origin 的方式：BC 直接用全量 trajs 训练
+RUN_GAIL_SMOKE_TEST = False
+RUN_GAIL_FULL_TRAIN = True
+ENV_PROGRESS_REWARD_SCALE = 1.0
+ENV_GOAL_REACHED_BONUS = 5.0
+ENV_REF_PATH_PENALTY_THRESHOLD = 5.0
+ENV_REF_PATH_PENALTY_SCALE = 1.0
+ENV_LOG_INTERVAL_STEPS = 2000
+GAIL_ENV_REWARD_WEIGHT = 0.52  # 训练时总奖励 = GAIL奖励 + weight * 环境奖励
 Path(SAVE_DIR).mkdir(exist_ok=True)
 
 observation_space = ced_observation_space
@@ -78,7 +86,13 @@ def make_custom_env():
     """供 DummyVecEnv 调用的工厂函数，返回自定义 LeftTurnEnv 实例。"""
     if not _dfs:
         raise RuntimeError("请先调用 init_custom_env_dfs(dfs) 初始化数据")
-    return LeftTurnEnv(_dfs)
+    return LeftTurnEnv(
+        _dfs,
+        progress_reward_scale=ENV_PROGRESS_REWARD_SCALE,
+        goal_reached_bonus=ENV_GOAL_REACHED_BONUS,
+        ref_path_penalty_threshold=ENV_REF_PATH_PENALTY_THRESHOLD,
+        ref_path_penalty_scale=ENV_REF_PATH_PENALTY_SCALE,
+    )
 
 
 def init_custom_env_dfs(dfs: list) -> None:
@@ -323,10 +337,11 @@ def make_policy():
 # 5. BC 训练
 # =============================================================
 
-def train_bc(trajs: list[Trajectory]):
-    print("\n========== BC 训练 ==========")
+def train_bc_on(trajs: list[Trajectory], save_name: str):
+    """在给定轨迹上训练 BC，并保存至 checkpoints/{save_name}。"""
+    print(f"\n========== BC 训练 ({save_name}) ==========")
     transitions = rollout.flatten_trajectories(trajs)
-    print(f"[BC] 共 {len(transitions)} 条 transitions")
+    print(f"[BC] 共 {len(transitions)} 条 transitions，来自 {len(trajs)} 条轨迹")
 
     trainer = bc.BC(
         observation_space=observation_space,
@@ -335,19 +350,23 @@ def train_bc(trajs: list[Trajectory]):
         policy=make_policy(),
         rng=np.random.default_rng(42),
         batch_size=64,
-        ent_weight=1e-3,    # 熵正则：防止策略退化为确定性
-        l2_weight=1e-4,     # 权重衰减
+        ent_weight=1e-3,
+        l2_weight=1e-4,
     )
 
-    # 每 10 epoch 打印一次 loss
     for epoch in range(0, 100, 10):
         trainer.train(n_epochs=10)
         print(f"  epoch {epoch+10}/100")
 
-    save_path = f"{SAVE_DIR}/{BC_POLICY_NAME}"
+    save_path = f"{SAVE_DIR}/{save_name}"
     trainer.policy.save(save_path)
     print(f"[BC] 策略已保存至 {save_path}")
     return trainer
+
+
+def train_bc(trajs: list[Trajectory]):
+    """向后兼容：使用默认 BC_POLICY_NAME 训练。"""
+    return train_bc_on(trajs, save_name=BC_POLICY_NAME)
 
 
 def load_bc_trainer() -> SimpleNamespace:
@@ -387,6 +406,83 @@ def initialize_ppo_from_bc(learner: PPO, bc_policy: ActorCriticPolicy | None):
     print(f"[GAIL] 已用 BC 初始化 actor 权重，复制参数 {len(copied_keys)} 个")
 
 
+class MixedRewardVecEnvWrapper(VecEnvWrapper):
+    """将 GAIL 判别器奖励与环境奖励加权融合。"""
+
+    def __init__(self, venv, env_reward_weight: float, log_interval_steps: int = 0):
+        super().__init__(venv)
+        self.env_reward_weight = float(env_reward_weight)
+        self.log_interval_steps = int(log_interval_steps)
+        self._log_step_count = 0
+        self._log_acc = {
+            "gail_reward": 0.0,
+            "env_reward": 0.0,
+            "mixed_reward": 0.0,
+            "progress_reward": 0.0,
+            "ref_path_penalty": 0.0,
+            "ref_min_dist": 0.0,
+            "goal_bonus": 0.0,
+        }
+        self._log_samples = 0
+
+    def reset(self):
+        return self.venv.reset()
+
+    def _accumulate_logs(self, infos, gail_rews, env_rews, mixed_rews):
+        for info, gail_r, env_r, mixed_r in zip(infos, gail_rews, env_rews, mixed_rews):
+            self._log_acc["gail_reward"] += float(gail_r)
+            self._log_acc["env_reward"] += float(env_r)
+            self._log_acc["mixed_reward"] += float(mixed_r)
+            self._log_acc["progress_reward"] += float(info.get("progress_reward", 0.0))
+            self._log_acc["ref_path_penalty"] += float(info.get("ref_path_penalty", 0.0))
+            self._log_acc["ref_min_dist"] += float(info.get("ref_min_dist", 0.0))
+            self._log_acc["goal_bonus"] += float(info.get("goal_bonus", 0.0))
+            self._log_samples += 1
+
+    def _maybe_print_logs(self, n_envs: int):
+        if self.log_interval_steps <= 0 or self._log_samples <= 0:
+            return
+
+        self._log_step_count += int(n_envs)
+        if self._log_step_count < self.log_interval_steps:
+            return
+
+        denom = max(self._log_samples, 1)
+        print(
+            "[EnvReward] "
+            f"steps≈{self._log_step_count} | "
+            f"gail={self._log_acc['gail_reward'] / denom:.3f}, "
+            f"env={self._log_acc['env_reward'] / denom:.3f}, "
+            f"mixed={self._log_acc['mixed_reward'] / denom:.3f}, "
+            f"progress={self._log_acc['progress_reward'] / denom:.3f}, "
+            f"ref_penalty={self._log_acc['ref_path_penalty'] / denom:.3f}, "
+            f"ref_min_dist={self._log_acc['ref_min_dist'] / denom:.3f}, "
+            f"goal_bonus={self._log_acc['goal_bonus'] / denom:.3f}"
+        )
+        self._log_step_count = 0
+        self._log_samples = 0
+        for key in self._log_acc:
+            self._log_acc[key] = 0.0
+
+    def step_wait(self):
+        obs, gail_rews, dones, infos = self.venv.step_wait()
+        env_rews = np.array(
+            [float(info.get("original_env_rew", 0.0)) for info in infos],
+            dtype=np.float32,
+        )
+        mixed_rews = np.asarray(gail_rews, dtype=np.float32) + self.env_reward_weight * env_rews
+
+        for info, gail_r, env_r, mixed_r in zip(infos, gail_rews, env_rews, mixed_rews):
+            info["gail_reward"] = float(gail_r)
+            info["env_reward"] = float(env_r)
+            info["mixed_reward"] = float(mixed_r)
+
+        self._accumulate_logs(infos, gail_rews, env_rews, mixed_rews)
+        self._maybe_print_logs(len(infos))
+
+        return obs, mixed_rews, dones, infos
+
+
 # =============================================================
 # 6. GAIL 训练（BC 收敛后再跑，可选）
 # =============================================================
@@ -410,7 +506,7 @@ def train_gail(
         env=venv,
         batch_size=64,
         ent_coef=0.01,
-        learning_rate=3e-4,
+        learning_rate=1e-4,
         n_epochs=10,
         verbose=verbose,
         policy_kwargs=dict(
@@ -431,11 +527,32 @@ def train_gail(
         demonstrations=trajs,
         demo_batch_size=256 if total_timesteps <= GAIL_SMOKE_TIMESTEPS else 512,
         gen_replay_buffer_capacity=512,
-        n_disc_updates_per_round=8,
+        n_disc_updates_per_round=4,
         venv=venv,
         gen_algo=learner,
         reward_net=reward_net,
+        # LeftTurnEnv 存在提前终止（到目标/偏离轨迹），episode 长度天然可变
+        # imitation 默认要求固定长度，这里显式放开。
+        allow_variable_horizon=True,
     )
+
+    if GAIL_ENV_REWARD_WEIGHT != 0.0 or ENV_LOG_INTERVAL_STEPS > 0:
+        trainer.venv_train = MixedRewardVecEnvWrapper(
+            trainer.venv_train,
+            env_reward_weight=GAIL_ENV_REWARD_WEIGHT,
+            log_interval_steps=ENV_LOG_INTERVAL_STEPS,
+        )
+        trainer.gen_algo.set_env(trainer.venv_train)
+        if GAIL_ENV_REWARD_WEIGHT != 0.0:
+            print(
+                "[GAIL] 训练奖励已融合: "
+                f"R_total = R_gail + {GAIL_ENV_REWARD_WEIGHT:.3f} * R_env"
+            )
+        if ENV_LOG_INTERVAL_STEPS > 0:
+            print(
+                "[GAIL] 环境奖励日志已开启: "
+                f"每约 {ENV_LOG_INTERVAL_STEPS} 个环境步打印一次 ref_path_penalty / ref_min_dist"
+            )
 
     trainer.train(total_timesteps=total_timesteps)
 
@@ -462,7 +579,7 @@ def run_gail_full_training(trajs: list[Trajectory], bc_policy: ActorCriticPolicy
         trajs=trajs,
         bc_policy=bc_policy,
         total_timesteps=GAIL_FULL_TIMESTEPS,
-        save_name="gail_policy_full_init_bc",
+        save_name="gail_policy_conservative",
         verbose=1,
     )
 
@@ -534,6 +651,72 @@ def evaluate(trainer, trajs: list[Trajectory], n_episodes=50):
     print(f"    HV_ay: MAE={mae[1]:.3f}, RMSE={rmse[1]:.3f}, P95|err|={p95[1]:.3f}")
 
 
+def evaluate_position_ade_fde(
+    policy: ActorCriticPolicy,
+    eval_dfs: list,
+    title: str = "Position ADE/FDE",
+):
+    """基于位置(HV_X, HV_Y)的验证集 ADE/FDE 评估。"""
+    print(f"\n========== {title} ==========")
+    if not eval_dfs:
+        print("  [评估] 没有可用 DataFrame")
+        return
+
+    # 关闭提前终止，让各策略都按同样时间长度对齐到专家轨迹
+    env = LeftTurnEnv(
+        eval_dfs,
+        max_dev=1e9,
+        goal_radius=-1.0,
+        progress_reward_scale=ENV_PROGRESS_REWARD_SCALE,
+        goal_reached_bonus=ENV_GOAL_REACHED_BONUS,
+        ref_path_penalty_threshold=ENV_REF_PATH_PENALTY_THRESHOLD,
+        ref_path_penalty_scale=ENV_REF_PATH_PENALTY_SCALE,
+    )
+
+    all_step_err: list[float] = []
+    ep_ade: list[float] = []
+    ep_fde: list[float] = []
+
+    for ep_idx, (df, _) in enumerate(eval_dfs):
+        gt_xy = df[["HV_X", "HV_Y"]].to_numpy(dtype=np.float32)
+        if len(gt_xy) < 2:
+            continue
+
+        obs, _ = env.reset(options={"episode_idx": ep_idx})
+        ep_err: list[float] = []
+
+        # 对齐专家时刻 t=1..T-1（t=0 是 reset 初始状态）
+        for t in range(1, len(gt_xy)):
+            action, _ = policy.predict(obs[None], deterministic=True)
+            obs, _, terminated, truncated, _ = env.step(action[0])
+
+            pred_xy = np.array([obs[0], obs[1]], dtype=np.float32)
+            err = float(np.linalg.norm(pred_xy - gt_xy[t]))
+            ep_err.append(err)
+            all_step_err.append(err)
+
+            if terminated or truncated:
+                break
+
+        if ep_err:
+            ep_ade.append(float(np.mean(ep_err)))
+            ep_fde.append(float(ep_err[-1]))
+
+    env.close()
+
+    if not ep_ade:
+        print("  [评估] 没有有效轨迹")
+        return
+
+    print(f"  评估轨迹数: {len(ep_ade)}")
+    print(f"  总步数: {len(all_step_err)}")
+    print(f"  ADE (step mean): {np.mean(all_step_err):.3f}")
+    print(f"  ADE (ep mean):   {np.mean(ep_ade):.3f}")
+    print(f"  FDE:             {np.mean(ep_fde):.3f}")
+    print(f"  ADE p95:         {np.quantile(all_step_err, 0.95):.3f}")
+    print(f"  FDE p95:         {np.quantile(ep_fde, 0.95):.3f}")
+
+
 # =============================================================
 # 8. 主流程
 # =============================================================
@@ -559,25 +742,31 @@ if __name__ == "__main__":
     if RUN_SINGLE_TRAJ_DEBUG:
         print_single_trajectory_replay_debug(train_trajs, train_dfs, episode_idx=0, max_steps=8)
 
-    # Step 3: 优先读取已训练好的 BC；若不存在则重新训练
-    try:
+    # Step 3: BC 训练或读取（统一得到 bc_trainer，供后续 GAIL 初始化）
+    if RUN_BC_RETRAIN:
+        bc_train_trajs = trajs if BC_TRAIN_ON_ALL_DATA else train_trajs
+        data_tag = "全量 trajs（train_origin 风格）" if BC_TRAIN_ON_ALL_DATA else "train split"
+        print(f"\n[BC] RUN_BC_RETRAIN=True，使用 {data_tag} 重训并覆盖保存到 {BC_POLICY_NAME}")
+        bc_trainer = train_bc(bc_train_trajs)
+    else:
+        print(f"\n[BC] RUN_BC_RETRAIN=False，读取已有模型 {BC_POLICY_NAME}")
         bc_trainer = load_bc_trainer()
-    except FileNotFoundError:
-        print("[BC] 未找到已保存策略，开始重新训练")
-        bc_trainer = train_bc(train_trajs)
 
     # Step 4: 在验证集上评估 BC
     print("\n[BC] 在验证集上评估：")
     evaluate(bc_trainer, val_trajs)
+    evaluate_position_ade_fde(bc_trainer.policy, val_dfs, title="BC 位置 ADE/FDE")
 
     # Step 5: 先跑短程 GAIL smoke test（使用 BC 权重初始化）
     if RUN_GAIL_SMOKE_TEST:
         gail_smoke_trainer = run_gail_smoke_test(train_trajs, bc_policy=bc_trainer.policy)
         print("\n[GAIL Smoke] 在验证集上做离线动作误差评估：")
         evaluate(gail_smoke_trainer, val_trajs)
+        evaluate_position_ade_fde(gail_smoke_trainer.policy, val_dfs, title="GAIL Smoke 位置 ADE/FDE")
 
     # Step 6: 完整 GAIL 训练入口（默认关闭，需要时把 RUN_GAIL_FULL_TRAIN 改成 True）
     if RUN_GAIL_FULL_TRAIN:
         gail_full_trainer = run_gail_full_training(train_trajs, bc_policy=bc_trainer.policy)
         print("\n[GAIL Full] 在验证集上做离线动作误差评估：")
         evaluate(gail_full_trainer, val_trajs)
+        evaluate_position_ade_fde(gail_full_trainer.policy, val_dfs, title="GAIL Full 位置 ADE/FDE")
