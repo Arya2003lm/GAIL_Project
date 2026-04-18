@@ -29,7 +29,7 @@ except ModuleNotFoundError:
 
 # ---------- 全局常量 ----------
 DATA_DIR    = "./data/left_turn/"
-TURN_POINT  = np.array([-4, 14.54], dtype=np.float64)   # 直线→弧线 分界点
+TURN_POINT  = np.array([-2, 14.54], dtype=np.float64)   # 直线→弧线 分界点
 N_PTS_LINE  = 100    # 直线段采样点数
 N_PTS_ARC   = 150    # 圆弧段采样点数
 # 兼容旧接口保留（圆弧方案中不使用）
