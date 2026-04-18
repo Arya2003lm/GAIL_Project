@@ -4,6 +4,7 @@
 # 参考轨迹由两段构成：
 #   1. 直线段：从轨迹起点 → 转弯点 TURN_POINT
 #   2. 圆弧段：从 TURN_POINT → 轨迹终点（goal）
+#   3. 末段直线：从 [x_goal, y_goal+offset] → [x_goal, y_goal]
 #      （不再使用样条/Bezier）
 # =============================================================
 # 用法：
@@ -30,8 +31,10 @@ except ModuleNotFoundError:
 # ---------- 全局常量 ----------
 DATA_DIR    = "./data/left_turn/"
 TURN_POINT  = np.array([-2, 14.54], dtype=np.float64)   # 直线→弧线 分界点
+GOAL_Y_OFFSET = -4.0  # 参考轨迹终点 y 偏移：y -> y - 4
 N_PTS_LINE  = 100    # 直线段采样点数
 N_PTS_ARC   = 150    # 圆弧段采样点数
+N_PTS_FINAL = 40     # 终点竖直直线段采样点数
 # 兼容旧接口保留（圆弧方案中不使用）
 CTRL_ARM_RATIO = 0.4
 
@@ -78,7 +81,8 @@ def make_reference_traj(
     # 对圆而言，切线与半径垂直；若终点切线为 +Y，则终点半径须水平，
     # 因而圆心位于 y = goal_y 这条水平线上。
     x0, y0 = float(turn_point[0]), float(turn_point[1])
-    x1, y1 = float(goal[0]), float(goal[1])
+    x_goal, y_goal = float(goal[0]), float(goal[1])
+    x1, y1 = x_goal, y_goal + GOAL_Y_OFFSET
 
     denom = 2.0 * (x1 - x0)
     num = (x1 * x1) - (x0 * x0) - ((y0 - y1) * (y0 - y1))
@@ -117,9 +121,17 @@ def make_reference_traj(
             arc_x = cx + r * np.cos(theta)
             arc_y = cy + r * np.sin(theta)
 
-    # 合并（去掉直线末点，与弧线首点重复）
-    xs = np.concatenate([line_x[:-1], arc_x])
-    ys = np.concatenate([line_y[:-1], arc_y])
+    # ---- 末段直线： [x_goal, y_goal+offset] -> [x_goal, y_goal] ----
+    if abs(y_goal - y1) < 1e-9:
+        final_x = np.array([x_goal], dtype=np.float64)
+        final_y = np.array([y_goal], dtype=np.float64)
+    else:
+        final_x = np.full(N_PTS_FINAL, x_goal, dtype=np.float64)
+        final_y = np.linspace(y1, y_goal, N_PTS_FINAL)
+
+    # 合并（去掉重复连接点：line末点与arc首点、arc末点与final首点）
+    xs = np.concatenate([line_x[:-1], arc_x[:-1], final_x])
+    ys = np.concatenate([line_y[:-1], arc_y[:-1], final_y])
     return xs, ys
 
 
@@ -247,7 +259,7 @@ if __name__ == "__main__":
     trajs, dfs = load_all_with_dataframes(args.data_dir)
     print(f"Loaded {len(dfs)} trajectories")
 
-    save_path = "./evaluate/ref_trajs.png" if args.save else None
+    save_path = "./evaluate/ref_trajs04.png" if args.save else None
     plot_reference_trajs(
         dfs,
         ep_indices=args.ep,

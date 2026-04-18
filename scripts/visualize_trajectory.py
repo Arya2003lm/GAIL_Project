@@ -38,7 +38,7 @@ SPLIT_SEED   = 42
 
 MODELS = {
     "BC":   "bc_policy_hv_ax_ay",
-    "GAIL": "gail_policy_conservative",
+    "GAIL": "gail_policy_conservative_001",
 }
 MODEL_COLORS = {
     "Expert":    "#2c7bb6",

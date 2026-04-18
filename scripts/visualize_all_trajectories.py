@@ -2,9 +2,10 @@
 # visualize_all_trajectories.py  —  全量轨迹：原始 vs 生成 对比图
 # =============================================================
 # 用法:
-#   python scripts/visualize_all_trajectories.py
-#   python scripts/visualize_all_trajectories.py --split val --save
-#   python scripts/visualize_all_trajectories.py --model-name GAIL --model-ckpt gail_policy_conservative --save
+#   python scripts/visualize_all_trajectories.py                       # 默认保存图片
+#   python scripts/visualize_all_trajectories.py --split val
+#   python scripts/visualize_all_trajectories.py --model-name GAIL --model-ckpt gail_policy_conservative_001
+#   python scripts/visualize_all_trajectories.py --no-save             # 不保存，直接显示
 # =============================================================
 
 import os
@@ -128,7 +129,7 @@ def main():
     parser.add_argument("--model-name", default="GAIL", help="Legend name of generated policy")
     parser.add_argument("--model-ckpt", default="gail_policy_conservative", help="Checkpoint file under ./checkpoints")
     parser.add_argument("--data-dir", default=DATA_DIR)
-    parser.add_argument("--save", action="store_true", help="Save image to evaluate/ instead of showing")
+    parser.add_argument("--no-save", action="store_true", help="Do not save image; show figure window instead")
     args = parser.parse_args()
 
     print("Loading data ...")
@@ -159,7 +160,7 @@ def main():
     out_dir = Path("./evaluate")
     out_dir.mkdir(exist_ok=True)
 
-    if args.save:
+    if not args.no_save:
         out_path = out_dir / f"all_traj_expert_vs_{args.model_name.lower()}_{args.split}.png"
         fig.savefig(out_path, dpi=160, bbox_inches="tight")
         print(f"Saved → {out_path}")

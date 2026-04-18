@@ -7,6 +7,7 @@
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")  # 避免 OpenMP 重复加载冲突
 
+import re
 import numpy as np
 import pandas as pd
 import torch
@@ -76,6 +77,43 @@ observation_space = ced_observation_space
 action_space = ced_action_space
 POLICY_NET_ARCH = dict(pi=[256, 256], vf=[256, 256])
 POLICY_ACTIVATION_FN = torch.nn.ReLU
+
+
+def _make_next_versioned_name(base_name: str, save_dir: str = SAVE_DIR) -> str:
+    """返回下一个可用的序号名称，如 base_name_001、base_name_002。"""
+    save_root = Path(save_dir)
+    pattern = re.compile(rf"^{re.escape(base_name)}_(\d+)$")
+    max_idx = 0
+
+    for file in save_root.glob(f"{base_name}_*.zip"):
+        m = pattern.match(file.stem)
+        if m:
+            max_idx = max(max_idx, int(m.group(1)))
+
+    return f"{base_name}_{max_idx + 1:03d}"
+
+
+def _resolve_latest_checkpoint_name(base_name: str, save_dir: str = SAVE_DIR) -> str:
+    """优先返回基础名；若不存在则返回最新序号版本名。"""
+    save_root = Path(save_dir)
+    base_path = save_root / base_name
+    if base_path.exists() or base_path.with_suffix(".zip").exists():
+        return base_name
+
+    pattern = re.compile(rf"^{re.escape(base_name)}_(\d+)$")
+    candidates: list[tuple[int, str]] = []
+    for file in save_root.glob(f"{base_name}_*.zip"):
+        m = pattern.match(file.stem)
+        if m:
+            candidates.append((int(m.group(1)), file.stem))
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"未找到模型: {base_path} 或 {save_root / (base_name + '_###.zip')}"
+        )
+
+    candidates.sort(key=lambda x: x[0])
+    return candidates[-1][1]
 
 
 # _dfs 存储所有轨迹 DataFrame，make_custom_env 通过闭包引用
@@ -358,7 +396,8 @@ def train_bc_on(trajs: list[Trajectory], save_name: str):
         trainer.train(n_epochs=10)
         print(f"  epoch {epoch+10}/100")
 
-    save_path = f"{SAVE_DIR}/{save_name}"
+    versioned_name = _make_next_versioned_name(save_name)
+    save_path = f"{SAVE_DIR}/{versioned_name}"
     trainer.policy.save(save_path)
     print(f"[BC] 策略已保存至 {save_path}")
     return trainer
@@ -371,9 +410,8 @@ def train_bc(trajs: list[Trajectory]):
 
 def load_bc_trainer() -> SimpleNamespace:
     """从磁盘读取已保存的 BC 策略，并包装成带 policy 属性的对象。"""
-    save_path = Path(SAVE_DIR) / BC_POLICY_NAME
-    if not save_path.exists():
-        raise FileNotFoundError(f"未找到已保存的 BC 策略: {save_path}")
+    resolved_name = _resolve_latest_checkpoint_name(BC_POLICY_NAME)
+    save_path = Path(SAVE_DIR) / resolved_name
 
     policy = ActorCriticPolicy.load(str(save_path))
     print(f"[BC] 已从 {save_path} 读取策略")
@@ -556,7 +594,8 @@ def train_gail(
 
     trainer.train(total_timesteps=total_timesteps)
 
-    save_path = f"{SAVE_DIR}/{save_name}"
+    versioned_name = _make_next_versioned_name(save_name)
+    save_path = f"{SAVE_DIR}/{versioned_name}"
     trainer.policy.save(save_path)
     print(f"[GAIL] 策略已保存至 {save_path}")
     return trainer
