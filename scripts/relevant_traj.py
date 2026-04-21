@@ -30,8 +30,9 @@ except ModuleNotFoundError:
 
 # ---------- 全局常量 ----------
 DATA_DIR    = "./data/left_turn/"
-TURN_POINT  = np.array([-2, 14.54], dtype=np.float64)   # 直线→弧线 分界点
-GOAL_Y_OFFSET = -4.0  # 参考轨迹终点 y 偏移：y -> y - 4
+TURN_X      = -2.0
+TURN_POINT  = np.array([TURN_X, 13.8], dtype=np.float64)   # 兼容旧接口；默认y将动态取y_start
+GOAL_Y_OFFSET = -3  # 参考轨迹终点 y 偏移：y -> y - 4
 N_PTS_LINE  = 100    # 直线段采样点数
 N_PTS_ARC   = 150    # 圆弧段采样点数
 N_PTS_FINAL = 40     # 终点竖直直线段采样点数
@@ -46,7 +47,7 @@ CTRL_ARM_RATIO = 0.4
 def make_reference_traj(
     start: np.ndarray,
     goal: np.ndarray,
-    turn_point: np.ndarray = TURN_POINT,
+    turn_point: np.ndarray | None = None,
     n_line: int = N_PTS_LINE,
     n_arc: int = N_PTS_ARC,
     ctrl_arm_ratio: float = CTRL_ARM_RATIO,
@@ -58,7 +59,7 @@ def make_reference_traj(
     ----
     start       : 轨迹起点 [x, y]
     goal        : 轨迹终点 [x, y]
-    turn_point  : 直线与弧线的分界点，默认 (-4.3, 14.54)
+    turn_point  : 直线与弧线的分界点；若为 None，默认使用 (-2, y_start)
     n_line      : 直线段点数
     n_arc       : 圆弧段点数
     ctrl_arm_ratio : 兼容旧接口参数（圆弧方案中不使用）
@@ -67,9 +68,12 @@ def make_reference_traj(
     ----
     xs, ys : 参考轨迹的 X / Y 坐标数组（已合并两段，去除重复连接点）
     """
-    start      = np.asarray(start,      dtype=np.float64)
-    goal       = np.asarray(goal,       dtype=np.float64)
-    turn_point = np.asarray(turn_point, dtype=np.float64)
+    start = np.asarray(start, dtype=np.float64)
+    goal = np.asarray(goal, dtype=np.float64)
+    if turn_point is None:
+        turn_point = np.array([TURN_X, start[1]], dtype=np.float64)
+    else:
+        turn_point = np.asarray(turn_point, dtype=np.float64)
 
     # ---- 直线段：start → turn_point ----
     t_line = np.linspace(0, 1, n_line)
@@ -182,12 +186,16 @@ def plot_reference_trajs(
     colors = cm.tab20(np.linspace(0, 1, len(ep_indices)))
     fig, ax = plt.subplots(figsize=(10, 9))
 
+    turn_xs, turn_ys = [], []
     for color, ep_idx in zip(colors, ep_indices):
         df, goal = dfs[ep_idx]
         start = np.array([df["HV_X"].iloc[0], df["HV_Y"].iloc[0]])
         goal_arr = np.asarray(goal, dtype=np.float64)
 
-        ref_xs, ref_ys = make_reference_traj(start, goal_arr)
+        turn_point = np.array([TURN_X, start[1]], dtype=np.float64)
+        ref_xs, ref_ys = make_reference_traj(start, goal_arr, turn_point=turn_point)
+        turn_xs.append(turn_point[0])
+        turn_ys.append(turn_point[1])
 
         if show_expert:
             ax.plot(
@@ -199,11 +207,11 @@ def plot_reference_trajs(
             color=color, lw=2.0, ls="--", alpha=0.85, zorder=3,
         )
 
-    # 标注转弯点
+    # 标注动态转弯点：(-2, y_start)
     ax.scatter(
-        [TURN_POINT[0]], [TURN_POINT[1]],
-        marker="D", s=120, color="crimson", zorder=10,
-        label=f"Turn point ({TURN_POINT[0]}, {TURN_POINT[1]})",
+        turn_xs, turn_ys,
+        marker="D", s=42, color="crimson", alpha=0.6, zorder=10,
+        label="Turn points (-2, y_start)",
     )
 
     # 图例代理
@@ -223,7 +231,7 @@ def plot_reference_trajs(
     ax.set_ylabel("Y (m)", fontsize=12)
     ax.set_title(
         f"Reference trajectories  ({len(ep_indices)} episodes)\n"
-        f"Straight: start → {tuple(TURN_POINT.tolist())}  |  Arc: turn → goal (circular arc)",
+        f"Straight: start → (-2, y_start)  |  Arc: turn → goal (circular arc)",
         fontsize=11,
     )
     ax.set_aspect("equal", "datalim")
