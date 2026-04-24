@@ -13,6 +13,7 @@ import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import argparse
+import re
 from pathlib import Path
 
 import numpy as np
@@ -39,13 +40,43 @@ SPLIT_SEED   = 42
 MODELS = {
     "BC":   "bc_policy_hv_ax_ay",
     "GAIL": "gail_policy_conservative_001",
+    "AIRL": "airl_policy_002",
 }
 MODEL_COLORS = {
     "Expert":    "#2c7bb6",
     "BC":        "#d7191c",
     "GAIL":      "#1a9641",
+    "AIRL":      "#f28e2b",
     "Reference": "#984ea3",
 }
+
+
+def resolve_checkpoint_path(save_dir: str | Path, model_name: str) -> Path | None:
+    """解析 checkpoint 路径：优先精确命中，否则自动匹配最新编号版本。"""
+    save_root = Path(save_dir)
+    direct = save_root / model_name
+    if direct.exists():
+        return direct
+
+    direct_zip = save_root / f"{model_name}.zip"
+    if direct_zip.exists():
+        return direct_zip
+
+    pattern = re.compile(rf"^{re.escape(model_name)}_(\d+)$")
+    candidates: list[tuple[int, Path]] = []
+    for p in save_root.glob(f"{model_name}_*"):
+        if not p.is_file():
+            continue
+        candidate_name = p.stem if p.suffix == ".zip" else p.name
+        m = pattern.match(candidate_name)
+        if m:
+            candidates.append((int(m.group(1)), p))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: x[0])
+    return candidates[-1][1]
 
 
 # ---------- 数据切分 ----------
@@ -235,6 +266,8 @@ def main():
     parser.add_argument("--no-reference", action="store_true", help="Hide reference trajectory")
     parser.add_argument("--save", action="store_true",
                         help="Save figures to evaluate/ directory instead of showing")
+    parser.add_argument("--all-eps", action="store_true",
+                        help="Export comparison figures for all episodes in selected split")
     parser.add_argument("--data-dir", default=DATA_DIR)
     args = parser.parse_args()
 
@@ -249,12 +282,12 @@ def main():
     # ------ 加载策略 ------
     policies = {}
     for name, ckpt in MODELS.items():
-        path = Path(SAVE_DIR) / ckpt
-        if path.exists():
+        path = resolve_checkpoint_path(SAVE_DIR, ckpt)
+        if path is not None:
             policies[name] = ActorCriticPolicy.load(str(path))
             print(f"  Loaded {name} from {path}")
         else:
-            print(f"  Skipping {name}: not found at {path}")
+            print(f"  Skipping {name}: not found for key '{ckpt}' in {SAVE_DIR}")
 
     if not policies:
         print("No models found, exiting.")
@@ -265,6 +298,26 @@ def main():
 
     save_dir = Path("./evaluate")
     save_dir.mkdir(exist_ok=True)
+
+    # ------ 导出全部 episode（逐张图） ------
+    if args.all_eps:
+        out_dir = save_dir / "traj_compare"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Exporting all episodes to: {out_dir}")
+
+        for ep in range(n_ep):
+            fig = visualize_single(
+                ep, target_dfs, policies,
+                title=f"[{args.split}] Episode {ep}  —  Expert vs " + " vs ".join(policies.keys()),
+                show_ego=not args.no_ego,
+                show_actions=not args.no_actions,
+                show_reference=not args.no_reference,
+            )
+            out = out_dir / f"traj_vis_{args.split}_ep{ep:03d}.png"
+            fig.savefig(out, dpi=150, bbox_inches="tight")
+            plt.close(fig)
+        print(f"Saved all episode figures → {out_dir}")
+        return
 
     if len(ep_indices) == 1:
         ep = ep_indices[0]

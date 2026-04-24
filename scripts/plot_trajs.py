@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from pathlib import Path
 
+plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
+plt.rcParams["axes.unicode_minus"] = False
+
 try:
     from Convert_expert_data import load_all_with_dataframes
 except ModuleNotFoundError:
@@ -21,6 +24,8 @@ TOP10_SAVE_PATH = "./evaluate/top10_trajs_hvy20_maxx.png"
 TARGET_HV_Y = 20.0
 HV_Y_TOL = 1.0
 TOP_K = 10
+ALL_TRAJ_COLOR = "#1f77b4"
+ALL_TRAJ_LINEWIDTH = 1.8
 
 
 def print_top_trajs_near_hv_y(dfs, data_files, target_hv_y=TARGET_HV_Y, tol=HV_Y_TOL, top_k=TOP_K):
@@ -79,25 +84,36 @@ def plot_selected_trajs(dfs, selected_rows, save_path: str):
         xs = df["HV_X"].to_numpy(dtype=np.float32)
         ys = df["HV_Y"].to_numpy(dtype=np.float32)
 
-        ax.plot(xs, ys, color=color, lw=1.8, alpha=0.9, label=f"#{traj_idx}  X@Y20={row['HV_X_at_target']:.2f}")
+        ax.plot(
+            xs,
+            ys,
+            color=color,
+            lw=1.8,
+            alpha=0.9,
+            label=f"轨迹#{traj_idx}（Y≈{TARGET_HV_Y:.0f}时 X={row['HV_X_at_target']:.2f}）",
+        )
         ax.scatter(xs[0], ys[0], color=color, s=24, zorder=3)
         ax.scatter(goal[0], goal[1], color=color, marker="x", s=36, zorder=3)
 
-    ax.set_xlabel("HV_X (m)", fontsize=12)
-    ax.set_ylabel("HV_Y (m)", fontsize=12)
+    ax.set_xlabel("主车横向位置 X（米）", fontsize=20)
+    ax.set_ylabel("主车纵向位置 Y（米）", fontsize=20)
     ax.set_title(
-        f"Top {len(selected_rows)} Trajectories by HV_X near HV_Y≈{TARGET_HV_Y:.1f}±{HV_Y_TOL:.1f}",
-        fontsize=13,
+        f"在 Y≈{TARGET_HV_Y:.1f}±{HV_Y_TOL:.1f} 区域内横向位置最大的前 {len(selected_rows)} 条轨迹",
+        fontsize=20,
     )
+    ax.tick_params(axis="both", labelsize=16)
     ax.set_aspect("equal", "datalim")
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=9, loc="best")
+    ax.legend(fontsize=16, loc="best")
 
     plt.tight_layout()
     out = Path(save_path)
     out.parent.mkdir(exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight")
+    svg_out = out.with_suffix(".svg")
+    fig.savefig(svg_out, bbox_inches="tight")
     print(f"已保存 Top10 轨迹图 → {out}")
+    print(f"已保存 Top10 轨迹图(SVG) → {svg_out}")
 
 
 def main():
@@ -108,40 +124,42 @@ def main():
     print(f"共 {n} 条轨迹")
     top_rows = print_top_trajs_near_hv_y(dfs, data_files)
 
-    colors = cm.tab20(np.linspace(0, 1, n))
-
     fig, ax = plt.subplots(figsize=(10, 9))
 
     for i, (df, goal) in enumerate(dfs):
         xs = df["HV_X"].to_numpy(dtype=np.float32)
         ys = df["HV_Y"].to_numpy(dtype=np.float32)
-        ax.plot(xs, ys, color=colors[i], lw=1.0, alpha=0.7)
+        ax.plot(xs, ys, color=ALL_TRAJ_COLOR, lw=ALL_TRAJ_LINEWIDTH, alpha=0.8)
         # 起点圆点
-        ax.scatter(xs[0], ys[0], color=colors[i], s=20, zorder=3)
+        ax.scatter(xs[0], ys[0], color=ALL_TRAJ_COLOR, s=20, zorder=3)
         # 终点/目标用叉
-        ax.scatter(goal[0], goal[1], color=colors[i], marker="x", s=30, zorder=3)
+        ax.scatter(goal[0], goal[1], color=ALL_TRAJ_COLOR, marker="x", s=30, zorder=3)
 
-    ax.set_xlabel("HV_X (m)", fontsize=12)
-    ax.set_ylabel("HV_Y (m)", fontsize=12)
-    ax.set_title(f"All HV Trajectories  (n={n})", fontsize=13)
+    ax.set_xlabel("主车横向位置 X（米）", fontsize=20)
+    ax.set_ylabel("主车纵向位置 Y（米）", fontsize=20)
+    ax.set_title(f"所有实验主车轨迹", fontsize=20)
+    ax.tick_params(axis="both", labelsize=16)
     ax.set_aspect("equal", "datalim")
     ax.grid(True, alpha=0.3)
 
     # 图例说明
     from matplotlib.lines import Line2D
     legend_elements = [
-        Line2D([0], [0], color="gray", lw=1.2, label="HV trajectory"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=6, label="Start point"),
-        Line2D([0], [0], marker="x", color="gray", markersize=7, label="Goal point"),
+        Line2D([0], [0], color=ALL_TRAJ_COLOR, lw=ALL_TRAJ_LINEWIDTH, label="主车轨迹"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor=ALL_TRAJ_COLOR, markersize=6, label="起点"),
+        Line2D([0], [0], marker="x", color=ALL_TRAJ_COLOR, markersize=7, label="终点"),
     ]
-    ax.legend(handles=legend_elements, fontsize=10, loc="upper left")
+    ax.legend(handles=legend_elements, fontsize=16, loc="upper left")
 
     plt.tight_layout()
 
     out = Path(SAVE_PATH)
     out.parent.mkdir(exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight")
+    svg_out = out.with_suffix(".svg")
+    fig.savefig(svg_out, bbox_inches="tight")
     print(f"已保存 → {out}")
+    print(f"已保存(SVG) → {svg_out}")
 
     plot_selected_trajs(dfs, top_rows, TOP10_SAVE_PATH)
     plt.show()

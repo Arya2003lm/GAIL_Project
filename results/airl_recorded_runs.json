@@ -1,0 +1,383 @@
+{
+  "updated_at": "2026-04-24T03:36:03",
+  "runs": {
+    "airl_full_long_20260421_172127": {
+      "description": "自动记录: airl_full / profile=long",
+      "run_type": "airl_full",
+      "profile_name": "long",
+      "profile_params": {
+        "airl_full_timesteps": 1200000,
+        "ppo_learning_rate": 7e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.08,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.393910076211096,
+          "l2_mean": 0.38103100657463074,
+          "l2_p95": 0.9966816544532769,
+          "success_episodes": 4,
+          "success_ratio": 0.13793103448275862,
+          "hv_ax_mae": 0.30121877789497375,
+          "hv_ax_rmse": 0.4204128384590149,
+          "hv_ax_p95": 0.885479074716568,
+          "hv_ay_mae": 0.16593311727046967,
+          "hv_ay_rmse": 0.24367724359035492,
+          "hv_ay_p95": 0.4658865362405777
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 4.595116740074825,
+          "ade_ep_mean": 4.4399234581563105,
+          "fde": 11.615029349409301,
+          "ade_p95": 14.280736160278316,
+          "fde_p95": 20.475279617309567
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_001",
+      "recorded_at": "2026-04-21T17:21:27",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    },
+    "airl_full_long_20260421_194738": {
+      "description": "自动记录: airl_full / profile=long",
+      "run_type": "airl_full",
+      "profile_name": "long",
+      "profile_params": {
+        "airl_full_timesteps": 1200000,
+        "ppo_learning_rate": 7e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.08,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.5088199106946921,
+          "l2_mean": 0.48764801025390625,
+          "l2_p95": 1.144832599163055,
+          "success_episodes": 0,
+          "success_ratio": 0.0,
+          "hv_ax_mae": 0.384982705116272,
+          "hv_ax_rmse": 0.5130541324615479,
+          "hv_ax_p95": 1.0509653449058531,
+          "hv_ay_mae": 0.2268693745136261,
+          "hv_ay_rmse": 0.29452571272850037,
+          "hv_ay_p95": 0.6105221986770629
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 5.5457118142408195,
+          "ade_ep_mean": 5.5912597591511695,
+          "fde": 13.977926348817759,
+          "ade_p95": 17.484672641754145,
+          "fde_p95": 29.021961975097653
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_001",
+      "recorded_at": "2026-04-21T19:47:38",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    },
+    "airl_full_long_20260423_012505": {
+      "description": "自动记录: airl_full / profile=long",
+      "run_type": "airl_full",
+      "profile_name": "long",
+      "profile_params": {
+        "airl_full_timesteps": 1200000,
+        "ppo_learning_rate": 7e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.08,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.5319638759089945,
+          "l2_mean": 0.5067042112350464,
+          "l2_p95": 1.359026849269867,
+          "success_episodes": 0,
+          "success_ratio": 0.0,
+          "hv_ax_mae": 0.4299609363079071,
+          "hv_ax_rmse": 0.5916039943695068,
+          "hv_ax_p95": 1.294992899894714,
+          "hv_ay_mae": 0.18594901263713837,
+          "hv_ay_rmse": 0.2644588053226471,
+          "hv_ay_p95": 0.5637988567352293
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 5.131570302102537,
+          "ade_ep_mean": 5.277453210173596,
+          "fde": 14.901560988919488,
+          "ade_p95": 17.080944633483863,
+          "fde_p95": 26.06151237487793
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_001",
+      "recorded_at": "2026-04-23T01:25:05",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    },
+    "airl_full_long_001": {
+      "description": "自动记录: airl_full / profile=long",
+      "run_type": "airl_full",
+      "profile_name": "long",
+      "profile_params": {
+        "airl_full_timesteps": 1200000,
+        "ppo_learning_rate": 7e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.08,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.5088199106946921,
+          "l2_mean": 0.48764801025390625,
+          "l2_p95": 1.144832599163055,
+          "success_episodes": 0,
+          "success_ratio": 0.0,
+          "hv_ax_mae": 0.384982705116272,
+          "hv_ax_rmse": 0.5130541324615479,
+          "hv_ax_p95": 1.0509653449058531,
+          "hv_ay_mae": 0.2268693745136261,
+          "hv_ay_rmse": 0.29452571272850037,
+          "hv_ay_p95": 0.6105221986770629
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 5.5457118142408195,
+          "ade_ep_mean": 5.5912597591511695,
+          "fde": 13.977926348817759,
+          "ade_p95": 17.484672641754145,
+          "fde_p95": 29.021961975097653
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_001",
+      "recorded_at": "2026-04-23T02:52:58",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    },
+    "airl_full_long_002": {
+      "description": "自动记录: airl_full / profile=long",
+      "run_type": "airl_full",
+      "profile_name": "long",
+      "profile_params": {
+        "airl_full_timesteps": 1200000,
+        "ppo_learning_rate": 7e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.08,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.47456589529039384,
+          "l2_mean": 0.46692508459091187,
+          "l2_p95": 1.2534874558448785,
+          "success_episodes": 2,
+          "success_ratio": 0.06896551724137931,
+          "hv_ax_mae": 0.3816414177417755,
+          "hv_ax_rmse": 0.5287498235702515,
+          "hv_ax_p95": 1.1673883080482481,
+          "hv_ay_mae": 0.18416833877563477,
+          "hv_ay_rmse": 0.2782304286956787,
+          "hv_ay_p95": 0.5519566774368282
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 4.436708390844939,
+          "ade_ep_mean": 4.2175353254439365,
+          "fde": 10.223585679613311,
+          "ade_p95": 13.732857751846309,
+          "fde_p95": 18.925129318237296
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_002",
+      "recorded_at": "2026-04-23T14:33:00",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    },
+    "airl_full_stable_goal_001": {
+      "description": "自动记录: airl_full / profile=stable_goal",
+      "run_type": "airl_full",
+      "profile_name": "stable_goal",
+      "profile_params": {
+        "airl_full_timesteps": 1500000,
+        "ppo_learning_rate": 5e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.06,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.48932821995529613,
+          "l2_mean": 0.47829872369766235,
+          "l2_p95": 1.2451754093170164,
+          "success_episodes": 1,
+          "success_ratio": 0.034482758620689655,
+          "hv_ax_mae": 0.4021189212799072,
+          "hv_ax_rmse": 0.5492007732391357,
+          "hv_ax_p95": 1.183272552490234,
+          "hv_ay_mae": 0.18490605056285858,
+          "hv_ay_rmse": 0.2575671970844269,
+          "hv_ay_p95": 0.5280402064323417
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 4.495536818309791,
+          "ade_ep_mean": 4.506255644887385,
+          "fde": 11.494018032633026,
+          "ade_p95": 12.51281542778015,
+          "fde_p95": 21.26271438598632
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_003",
+      "recorded_at": "2026-04-23T19:38:33",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    },
+    "airl_full_stable_goal_v2_001": {
+      "description": "自动记录: airl_full / profile=stable_goal_v2",
+      "run_type": "airl_full",
+      "profile_name": "stable_goal_v2",
+      "profile_params": {
+        "airl_full_timesteps": 1800000,
+        "ppo_learning_rate": 5e-05,
+        "ppo_n_steps": 2048,
+        "ppo_batch_size": 256,
+        "ppo_n_epochs": 12,
+        "ppo_ent_coef": 0.001,
+        "ppo_gamma": 0.995,
+        "ppo_gae_lambda": 0.97,
+        "ppo_clip_range": 0.06,
+        "ppo_max_grad_norm": 0.5,
+        "airl_demo_batch_size_smoke": 128,
+        "airl_demo_batch_size_full": 1024,
+        "airl_disc_updates_per_round": 1,
+        "airl_gen_replay_buffer_capacity": 8192
+      },
+      "result": {
+        "action_metrics": {
+          "title": "动作误差评估",
+          "eval_trajectories": 29,
+          "total_steps": 3167,
+          "ep_mae_l2_mean": 0.49563325643870715,
+          "l2_mean": 0.4729350805282593,
+          "l2_p95": 1.1153121352195736,
+          "success_episodes": 1,
+          "success_ratio": 0.034482758620689655,
+          "hv_ax_mae": 0.3843972682952881,
+          "hv_ax_rmse": 0.516898512840271,
+          "hv_ax_p95": 1.029170298576355,
+          "hv_ay_mae": 0.2039206326007843,
+          "hv_ay_rmse": 0.28542715311050415,
+          "hv_ay_p95": 0.6238965988159179
+        },
+        "position_metrics": {
+          "title": "AIRL Full 位置 ADE/FDE",
+          "eval_episodes": 29,
+          "total_steps": 3138,
+          "ade_step_mean": 4.5904336984333245,
+          "ade_ep_mean": 4.603695117877129,
+          "fde": 12.696276973033774,
+          "ade_p95": 14.712617063522337,
+          "fde_p95": 24.038331985473633
+        }
+      },
+      "model_path": "./checkpoints//airl_policy_004",
+      "recorded_at": "2026-04-24T03:36:03",
+      "extra": {
+        "bc_init_path": "checkpoints\\bc_policy_hv_ax_ay_001"
+      }
+    }
+  }
+}
